@@ -118,11 +118,11 @@ Cơ sở dữ liệu gồm 4 bảng thực thể chính theo chuẩn Đề 16:
 
 | Dịch vụ | Địa chỉ URL | Tài khoản / Mật khẩu mặc định | Ghi chú |
 |:---|:---|:---|:---|
-| **Website Quản lý Tài sản** | [http://localhost](http://localhost) | `admin` / `admin123` | Truy cập qua Nginx Reverse Proxy (Port 80) |
+| **Website Quản lý Tài sản** | [http://localhost](http://localhost) | `hien141` / `hien140106` (hoặc `admin`) | Truy cập qua Nginx Reverse Proxy (Port 80) |
 | **Prometheus Metrics Web** | [http://localhost/metrics](http://localhost/metrics) | Không yêu cầu | Endpoint xuất metrics từ `prom-client` |
-| **Grafana Dashboard** | [http://localhost:3001](http://localhost:3001) | `admin` / `admin123` | Đã tích hợp sẵn Dashboard & Datasources |
+| **Grafana Dashboard** | [http://localhost:3001](http://localhost:3001) | `hien141` / `hien140106` | Đã tích hợp sẵn Dashboard & Datasources |
 | **Prometheus Targets** | [http://localhost:9090/targets](http://localhost:9090/targets) | Không yêu cầu | Xem tình trạng UP của 4 target exporters |
-| **pgAdmin 4** | [http://localhost:5050](http://localhost:5050) | `admin@ictu.edu.vn` / `AdminSecure2026!Passwd` | Đăng nhập để quản lý PostgreSQL |
+| **pgAdmin 4** | [http://localhost:5050](http://localhost:5050) | `admin@ictu.edu.vn` (hoặc `hien141@ictu.edu.vn`) / `hien140106` | Đăng nhập để quản lý PostgreSQL |
 | **cAdvisor Metrics** | [http://localhost:8080](http://localhost:8080) | Không yêu cầu | Xem thông số phần cứng container |
 
 ---
