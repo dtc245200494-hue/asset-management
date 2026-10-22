@@ -9,9 +9,10 @@ router.get('/', async (req, res) => {
   try {
     const { q, status, category_id } = req.query;
     let query = `
-      SELECT a.*, c.name AS category_name
+      SELECT a.*, c.name AS category_name, u.full_name AS assigned_to_name
       FROM assets a
       JOIN categories c ON a.category_id = c.id
+      LEFT JOIN users u ON a.assigned_to_user_id = u.id
       WHERE 1=1
     `;
     const params = [];

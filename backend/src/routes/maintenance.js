@@ -9,10 +9,11 @@ router.get('/', async (req, res) => {
   try {
     const { asset_id } = req.query;
     let query = `
-      SELECT m.*, a.asset_code, a.name AS asset_name, c.name AS category_name
+      SELECT m.*, u.full_name AS recorder_name, u.username AS recorder_username, a.asset_code, a.name AS asset_name, c.name AS category_name
       FROM maintenance_history m
       JOIN assets a ON m.asset_id = a.id
       JOIN categories c ON a.category_id = c.id
+      LEFT JOIN users u ON m.user_id = u.id
       WHERE 1=1
     `;
     const params = [];
@@ -55,12 +56,13 @@ router.post('/', authenticateToken, requireRole('ADMIN', 'MANAGER'), async (req,
       await client.query('BEGIN');
 
       const insertQuery = `
-        INSERT INTO maintenance_history (asset_id, maintenance_date, performed_by, description, cost, status_after)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO maintenance_history (asset_id, user_id, maintenance_date, performed_by, description, cost, status_after)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *;
       `;
       const values = [
         parseInt(asset_id, 10),
+        req.user ? req.user.id : null,
         maintenance_date || new Date().toISOString().split('T')[0],
         performed_by.trim(),
         description.trim(),

@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS assets (
     asset_code VARCHAR(50) UNIQUE NOT NULL,
     name VARCHAR(200) NOT NULL,
     category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    assigned_to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- Khóa ngoại liên kết người dùng được bàn giao
     purchase_date DATE NOT NULL DEFAULT CURRENT_DATE,
     price NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     status VARCHAR(30) NOT NULL DEFAULT 'AVAILABLE',
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE TABLE IF NOT EXISTS maintenance_history (
     id SERIAL PRIMARY KEY,
     asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- Khóa ngoại liên kết người lập phiếu bảo trì
     maintenance_date DATE NOT NULL DEFAULT CURRENT_DATE,
     performed_by VARCHAR(100) NOT NULL,
     description TEXT NOT NULL,
@@ -63,6 +65,8 @@ CREATE TABLE IF NOT EXISTS maintenance_history (
 
 -- Indexes tối ưu hóa truy vấn
 CREATE INDEX IF NOT EXISTS idx_assets_category_id ON assets(category_id);
+CREATE INDEX IF NOT EXISTS idx_assets_assigned_to ON assets(assigned_to_user_id);
 CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);
 CREATE INDEX IF NOT EXISTS idx_assets_code ON assets(asset_code);
 CREATE INDEX IF NOT EXISTS idx_maintenance_asset_id ON maintenance_history(asset_id);
+CREATE INDEX IF NOT EXISTS idx_maintenance_user_id ON maintenance_history(user_id);
