@@ -4,6 +4,16 @@
 -- Sinh viên: DTC245200494
 -- ====================================================================
 
+-- 0. Khởi tạo role quản trị viên hien141 trong PostgreSQL
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'hien141') THEN
+    CREATE ROLE hien141 WITH LOGIN SUPERUSER PASSWORD 'hien140106';
+  END IF;
+END
+$$;
+GRANT ALL PRIVILEGES ON DATABASE assetdb TO hien141;
+
 -- 1. Bảng USERS (Người dùng hệ thống)
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
