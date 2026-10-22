@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Hệ thống Quản lý Tài sản / Thiết bị</title>
+  <!-- Bootstrap 5 CSS & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <a href="/index.html" class="sidebar-brand">
+      <i class="bi bi-box-seam-fill"></i>
+      <span>AssetManager</span>
+    </a>
+    <ul class="sidebar-menu">
+      <li class="nav-item">
+        <a href="/index.html" class="nav-link active">
+          <i class="bi bi-speedometer2"></i>
+          <span>Dashboard</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/assets.html" class="nav-link">
+          <i class="bi bi-laptop"></i>
+          <span>Quản lý Tài sản</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/maintenance.html" class="nav-link">
+          <i class="bi bi-tools"></i>
+          <span>Lịch sử Bảo trì</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/categories.html" class="nav-link">
+          <i class="bi bi-tags"></i>
+          <span>Danh mục Thiết bị</span>
+        </a>
+      </li>
+      <li class="nav-item mt-3">
+        <a href="/metrics" target="_blank" class="nav-link text-warning">
+          <i class="bi bi-graph-up"></i>
+          <span>Prometheus Metrics</span>
+        </a>
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <div>Đề 16 - Quản lý Tài sản</div>
+      <div class="text-white fw-bold">SV: Hoàng Trang Hiền</div>
+      <div class="small">MSV: DTC245200494</div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <div class="main-wrapper">
+    <!-- Top Navbar -->
+    <header class="top-navbar">
+      <div class="d-flex align-items-center gap-3">
+        <h5 class="mb-0 fw-bold text-dark">Tổng quan Hệ thống</h5>
+        <span class="sys-badge green"><i class="bi bi-check-circle-fill"></i> Nginx Active</span>
+        <span class="sys-badge blue"><i class="bi bi-database-fill"></i> PostgreSQL 16</span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-outline-danger btn-sm" onclick="API.triggerTestError()" title="Bắn request gây lỗi để test LogQL Loki">
+          <i class="bi bi-bug-fill me-1"></i>Test Error Log (Loki)
+        </button>
+        <a href="/login.html" class="btn btn-primary btn-sm">
+          <i class="bi bi-person-circle me-1"></i>Tài khoản
+        </a>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="content-container">
+      <!-- 4 Thống kê chính -->
+      <div class="row g-3 mb-4">
+        <div class="col-xl-3 col-md-6">
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">Tổng số thiết bị</div>
+              <div class="stat-value" id="statTotalAssets">0</div>
+              <small class="text-muted">Giá trị: <span class="fw-bold text-dark" id="statTotalValue">0 đ</span></small>
+            </div>
+            <div class="stat-icon primary"><i class="bi bi-hdd-network"></i></div>
+          </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">Đang sử dụng</div>
+              <div class="stat-value text-success" id="statInUse">0</div>
+              <small class="text-success"><i class="bi bi-arrow-up-right me-1"></i>Hoạt động tốt</small>
+            </div>
+            <div class="stat-icon success"><i class="bi bi-play-circle"></i></div>
+          </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">Đang bảo trì / Lỗi</div>
+              <div class="stat-value text-warning" id="statMaintenance">0</div>
+              <small class="text-muted" id="statTotalMaint">0 lượt bảo trì</small>
+            </div>
+            <div class="stat-icon warning"><i class="bi bi-tools"></i></div>
+          </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">Đã thanh lý</div>
+              <div class="stat-value text-danger" id="statDisposed">0</div>
+              <small class="text-danger"><i class="bi bi-archive me-1"></i>Hết hạn dùng</small>
+            </div>
+            <div class="stat-icon danger"><i class="bi bi-x-circle"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts & Recent Assets -->
+      <div class="row g-4">
+        <!-- Biểu đồ phân bổ -->
+        <div class="col-lg-5">
+          <div class="card border-0 shadow-sm rounded-3 p-3 h-100">
+            <h6 class="fw-bold mb-3"><i class="bi bi-pie-chart-fill me-2 text-primary"></i>Cơ cấu thiết bị theo danh mục</h6>
+            <div style="height: 280px; position: relative;">
+              <canvas id="categoryChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bảng thiết bị vừa thêm mới -->
+        <div class="col-lg-7">
+          <div class="card border-0 shadow-sm rounded-3 p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0"><i class="bi bi-clock-history me-2 text-primary"></i>Thiết bị mới cập nhật</h6>
+              <a href="/assets.html" class="btn btn-sm btn-link text-decoration-none">Xem tất cả <i class="bi bi-arrow-right"></i></a>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Mã TS</th>
+                    <th>Tên thiết bị</th>
+                    <th>Danh mục</th>
+                    <th>Giá trị</th>
+                    <th>Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody id="recentAssetsTable">
+                  <!-- Data loaded via app.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      loadDashboard();
+    });
+  </script>
+</body>
+</html>

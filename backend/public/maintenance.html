@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lịch sử Bảo trì - Đề 16</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <a href="/index.html" class="sidebar-brand">
+      <i class="bi bi-box-seam-fill"></i>
+      <span>AssetManager</span>
+    </a>
+    <ul class="sidebar-menu">
+      <li class="nav-item">
+        <a href="/index.html" class="nav-link">
+          <i class="bi bi-speedometer2"></i>
+          <span>Dashboard</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/assets.html" class="nav-link">
+          <i class="bi bi-laptop"></i>
+          <span>Quản lý Tài sản</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/maintenance.html" class="nav-link active">
+          <i class="bi bi-tools"></i>
+          <span>Lịch sử Bảo trì</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/categories.html" class="nav-link">
+          <i class="bi bi-tags"></i>
+          <span>Danh mục Thiết bị</span>
+        </a>
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <div>Đề 16 - Quản lý Tài sản</div>
+      <div class="text-white fw-bold">SV: Hoàng Trang Hiền</div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-wrapper">
+    <header class="top-navbar">
+      <h5 class="mb-0 fw-bold">Nhật ký Sửa chữa & Bảo dưỡng Thiết bị</h5>
+      <div>
+        <button class="btn btn-warning text-dark fw-semibold btn-sm" onclick="openCreateMaintenanceModal()">
+          <i class="bi bi-wrench me-1"></i>Ghi nhận Bảo trì mới
+        </button>
+      </div>
+    </header>
+
+    <main class="content-container">
+      <div class="card-table">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th style="width: 50px;">#</th>
+                <th style="width: 130px;">Mã tài sản</th>
+                <th>Tên thiết bị</th>
+                <th>Ngày bảo trì</th>
+                <th>Đơn vị / Kỹ thuật viên</th>
+                <th>Nội dung công việc sửa chữa</th>
+                <th>Chi phí</th>
+                <th>Tình trạng sau bảo trì</th>
+              </tr>
+            </thead>
+            <tbody id="maintenanceTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal Ghi nhận Bảo trì -->
+  <div class="modal fade" id="maintenanceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <form onsubmit="saveMaintenance(event)">
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold">Ghi nhận Bảo trì / Sửa chữa Thiết bị</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body row g-3">
+            <div class="col-md-12">
+              <label class="form-label fw-semibold">Chọn thiết bị (*)</label>
+              <select id="maintAssetId" class="form-select" required></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Ngày thực hiện (*)</label>
+              <input type="date" id="maintDate" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Người / Đơn vị thực hiện (*)</label>
+              <input type="text" id="maintTechnician" class="form-control" placeholder="Ví dụ: Kỹ thuật viên IT / FPT Services" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Chi phí sửa chữa (VNĐ)</label>
+              <input type="number" id="maintCost" class="form-control" placeholder="0" min="0" step="1000">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Tình trạng thiết bị sau khi bảo trì</label>
+              <select id="maintStatusAfter" class="form-select">
+                <option value="IN_USE" selected>Đang sử dụng (Đã sửa xong)</option>
+                <option value="AVAILABLE">Sẵn sàng nhập kho</option>
+                <option value="MAINTENANCE">Vẫn đang chờ linh kiện</option>
+                <option value="DISPOSED">Không sửa được - Đề nghị thanh lý</option>
+              </select>
+            </div>
+            <div class="col-md-12">
+              <label class="form-label fw-semibold">Mô tả chi tiết nội dung bảo dưỡng / linh kiện thay thế (*)</label>
+              <textarea id="maintDescription" class="form-control" rows="3" placeholder="Ví dụ: Thay quạt tản nhiệt, vệ sinh mạch nguồn, cài đặt lại hệ điều hành..." required></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Lưu nhật ký</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      loadMaintenanceList();
+    });
+  </script>
+</body>
+</html>
