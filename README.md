@@ -22,48 +22,94 @@ Dự án được xây dựng nhằm giải quyết bài toán quản trị và 
 
 ## 🏗️ 2. Kiến trúc Hệ thống (System Architecture)
 
-Hệ thống bao gồm **11 dịch vụ Docker** được phân tách thành 3 phân vùng mạng biệt lập:
+Hệ thống được thiết kế theo mô hình phân tầng chuẩn Microservices với **11 dịch vụ Docker**, bảo vệ bởi **3 phân vùng mạng biệt lập (Docker Networks)** và tường lửa bảo mật đa lớp:
 
 ```mermaid
 flowchart TD
-    Client["Trình duyệt Client / Quản trị viên"] -->|HTTP Port 80| Nginx["asset-nginx\n(Reverse Proxy + Security Headers)"]
-    
-    subgraph Frontend_Net ["🌐 Mạng Frontend (frontend-net)"]
-        Nginx -->|Proxy Pass| App["asset-app\n(Node.js Express + REST API)"]
+    %% Định nghĩa phong cách giao diện
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a;
+    classDef edge fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a;
+    classDef app fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#0f172a;
+    classDef db fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#0f172a;
+    classDef monitor fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#0f172a;
+    classDef log fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a;
+
+    subgraph CLIENT["🌐 KHÁCH HÀNG & QUẢN TRỊ VIÊN (Client / Public Internet)"]
+        User["Người dùng & Nhân viên (Browser)"]:::client
+        Admin["Quản trị viên Hệ thống (Admin / SRE)"]:::client
     end
 
-    subgraph Backend_Net ["🔒 Mạng Nội bộ Backend (backend-net)"]
-        App -->|Port 5432| DB[("asset-postgres\n(PostgreSQL 16)")]
-        PgAdmin["asset-pgadmin\n(pgAdmin 4 GUI :5050)"] -->|Internal| DB
-        PgExporter["asset-postgres-exporter\n(:9187)"] -->|Scrape DB| DB
+    subgraph INGRESS["🛡️ TẦNG BIÊN MẠNG & BẢO MẬT (Edge & Reverse Proxy)"]
+        HostNginx["Host VPS Nginx (:80, :443)<br/>- Chuyển hướng 301 HTTP sang HTTPS<br/>- Chặn công khai /stub_status (403)"]:::edge
+        AssetNginx["Container: asset-nginx (:8081, :8443)<br/>- SSL/TLS Termination (x509v3 SAN Cert)<br/>- Security Headers: HSTS, CSP, X-Frame<br/>- Upstream Reverse Proxy sang Node.js"]:::edge
     end
 
-    subgraph Monitoring_Net ["📊 Mạng Giám sát & Logging (monitoring-net)"]
-        Prometheus["asset-prometheus\n(:9090)"] -->|Scrape /metrics| App
-        Prometheus -->|Scrape :9187| PgExporter
-        Prometheus -->|Scrape :9113| NgxExporter["asset-nginx-exporter\n(:9113)"]
-        NgxExporter -->|/stub_status| Nginx
-        Prometheus -->|Scrape :8080| CAdvisor["asset-cadvisor\n(CPU, RAM Container)"]
-        
-        Grafana["asset-grafana\n(Dashboard :3001)"] -->|Query PromQL| Prometheus
-        Grafana -->|Query LogQL| Loki["asset-loki\n(Log Store :3100)"]
-        
-        Promtail["asset-promtail\n(Log Collector)"] -->|Push Logs| Loki
-        App -.->|JSON Logs| Promtail
-        Nginx -.->|Access Logs| Promtail
+    subgraph FRONTEND_NET["🌐 DOCKER NETWORK: frontend-net (Public Bridge)"]
+        AssetApp["Container: asset-app (Node.js/Express :3000)<br/>- Non-root user (node)<br/>- Rate Limiting chống Brute Force<br/>- Centralized JWT Secret & RBAC<br/>- prom-client /metrics"]:::app
+        AssetPgadmin["Container: asset-pgadmin (:5050)<br/>- Web Quản lý PostgreSQL GUI"]:::app
     end
+
+    subgraph BACKEND_NET["🔒 DOCKER NETWORK: backend-net (internal: true - CÔ LẬP TUYỆT ĐỐI)"]
+        AssetPostgres[("Container: asset-postgres (PostgreSQL 16)<br/>- Cổng 5432 đóng hoàn toàn ra ngoài<br/>- Lưu trữ Users, Assets, Maintenance<br/>- Volume: postgres_data")]:::db
+    end
+
+    subgraph MONITORING_NET["📊 DOCKER NETWORK: monitoring-net (GIÁM SÁT & OBSERVABILITY)"]
+        subgraph EXPORTERS["Bộ Thu Thập Metrics (Exporters)"]
+            NginxExp["asset-nginx-exporter (:9113)<br/>Scrape Nginx stub_status"]:::monitor
+            PgExp["asset-postgres-exporter (:9187)<br/>Scrape PostgreSQL pg_stat"]:::monitor
+            Cadvisor["asset-cadvisor (:8088)<br/>Giám sát CPU/RAM (Unprivileged)"]:::monitor
+        end
+
+        AssetPrometheus["Container: asset-prometheus (:9090)<br/>- Scrape định kỳ 10s cả 4 Target<br/>- Time-Series TSDB (Retention 7d)"]:::monitor
+        AssetGrafana["Container: asset-grafana (:3001)<br/>- Dashboard Giám Sát Đề 16<br/>- Trực quan hóa PromQL & LogQL"]:::monitor
+    end
+
+    subgraph LOGGING_LAYER["📝 HỆ THỐNG THU THẬP & TRUY VẤN LOG (Loki & Promtail)"]
+        AssetPromtail["Container: asset-promtail<br/>- Quét /var/lib/docker/containers/*<br/>- Parse JSON & Gắn nhãn Streams"]:::log
+        AssetLoki["Container: asset-loki (:3100)<br/>- Index nhãn & Lưu trữ Log Chunks<br/>- Xử lý truy vấn LogQL"]:::log
+    end
+
+    %% Luồng Truy cập Web
+    User -->|"HTTP :80 (Auto Redirect 301)"| HostNginx
+    User -->|"HTTPS :443 (TLSv1.3 Encrypted)"| HostNginx
+    HostNginx -->|"Proxy SSL (:8443)"| AssetNginx
+    AssetNginx -->|"Proxy Pass (:3000)"| AssetApp
+    AssetApp -->|"Query SQL / Connection Pool :5432"| AssetPostgres
+
+    %% Luồng Quản trị
+    Admin -->|"HTTPS :443 (Giao diện Web)"| HostNginx
+    Admin -.->|"Truy cập :5050"| AssetPgadmin
+    AssetPgadmin -->|"Quản trị DB nội bộ :5432"| AssetPostgres
+    Admin -.->|"Truy cập Dashboard :3001"| AssetGrafana
+    Admin -.->|"Truy cập Metrics :9090"| AssetPrometheus
+
+    %% Luồng Thu thập Metrics
+    NginxExp -->|"Đọc /stub_status"| AssetNginx
+    PgExp -->|"Đọc pg_stat_* :5432"| AssetPostgres
+    AssetPrometheus -->|"Scrape :3000/metrics"| AssetApp
+    AssetPrometheus -->|"Scrape :9113/metrics"| NginxExp
+    AssetPrometheus -->|"Scrape :9187/metrics"| PgExp
+    AssetPrometheus -->|"Scrape :8080/metrics"| Cadvisor
+    AssetGrafana -->|"Truy vấn PromQL :9090"| AssetPrometheus
+
+    %% Luồng Thu thập & Truy vấn Logs
+    AssetApp -.->|"Docker stdout/stderr JSON Log"| AssetPromtail
+    AssetNginx -.->|"Docker stdout/stderr JSON Log"| AssetPromtail
+    AssetPostgres -.->|"Docker stdout/stderr JSON Log"| AssetPromtail
+    AssetPromtail -->|"Push Log Stream :3100"| AssetLoki
+    AssetGrafana -->|"Truy vấn LogQL :3100"| AssetLoki
 ```
 
 ### Danh sách 11 Container trong Hệ thống:
 | STT | Tên Container | Image gốc | Vai trò / Chức năng chính | Cổng (Host Binding) |
 |:---:|:---|:---|:---|:---|
-| 1 | `asset-nginx` | `nginx:1.25-alpine` | Reverse proxy, chặn header độc hại, cân bằng tải | `80:80` |
-| 2 | `asset-app` | `node:20-alpine` (Custom) | Ứng dụng Quản lý Tài sản, REST API, Prom-client | Không mở (Internal 3000) |
-| 3 | `asset-postgres` | `postgres:16-alpine` | Cơ sở dữ liệu quan hệ PostgreSQL 16 | Không mở (Internal 5432) |
-| 4 | `asset-pgadmin` | `dpage/pgadmin4:8` | Giao diện đồ họa quản trị cơ sở dữ liệu | `127.0.0.1:5050:80` |
-| 5 | `asset-prometheus` | `prom/prometheus:v2.51.0` | Thu thập và lưu trữ time-series metrics | `127.0.0.1:9090:9090` |
-| 6 | `asset-grafana` | `grafana/grafana:10.4.0` | Dashboard giám sát trực quan hóa metrics & logs | `3001:3000` |
-| 7 | `asset-cadvisor` | `gcr.io/cadvisor/cadvisor:v0.49.1` | Giám sát chỉ số phần cứng container (CPU, RAM, Disk) | `127.0.0.1:8080:8080` |
+| 1 | `asset-nginx` | `nginx:1.25-alpine` | Reverse proxy, SSL/TLS Termination, Security Headers (HSTS, CSP, X-Frame) | `80:80, 443:443` |
+| 2 | `asset-app` | `node:20-alpine` (Custom) | Ứng dụng Quản lý Tài sản, REST API, Rate Limiting, Prom-client | Không mở (Internal 3000) |
+| 3 | `asset-postgres` | `postgres:16-alpine` | Cơ sở dữ liệu quan hệ PostgreSQL 16 (Cách ly mạng nội bộ) | Không mở (Internal 5432) |
+| 4 | `asset-pgadmin` | `dpage/pgadmin4:8` | Giao diện đồ họa quản trị cơ sở dữ liệu | `0.0.0.0:5050:80` |
+| 5 | `asset-prometheus` | `prom/prometheus:v2.51.0` | Thu thập và lưu trữ time-series metrics | `0.0.0.0:9090:9090` |
+| 6 | `asset-grafana` | `grafana/grafana:10.4.0` | Dashboard giám sát trực quan hóa metrics & logs | `0.0.0.0:3001:3000` |
+| 7 | `asset-cadvisor` | `gcr.io/cadvisor/cadvisor:v0.49.1` | Giám sát tài nguyên container (Hạ quyền Unprivileged) | `0.0.0.0:8088:8080` |
 | 8 | `asset-postgres-exporter`| `prometheuscommunity/postgres-exporter:v0.15.0` | Trích xuất metrics PostgreSQL sang định dạng Prometheus | Internal 9187 |
 | 9 | `asset-nginx-exporter` | `nginx/nginx-prometheus-exporter:1.1.0` | Thu thập metrics từ Nginx `/stub_status` | Internal 9113 |
 | 10 | `asset-loki` | `grafana/loki:3.0.0` | Cơ sở dữ liệu tập trung lưu trữ logs | `127.0.0.1:3100:3100` |
