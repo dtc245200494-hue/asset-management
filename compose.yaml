@@ -96,6 +96,7 @@ services:
       asset-postgres:
         condition: service_healthy
     networks:
+      - frontend-net
       - backend-net
 
   # ------------------------------------------------------------------
@@ -169,6 +170,7 @@ services:
       asset-postgres:
         condition: service_healthy
     networks:
+      - frontend-net
       - backend-net
       - monitoring-net
 
