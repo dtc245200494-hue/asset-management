@@ -140,7 +140,7 @@ services:
 
   asset-cadvisor:
     container_name: asset-cadvisor
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:latest
     restart: unless-stopped
     # Hardening: Loại bỏ privileged: true để tránh container breakout
     privileged: false
@@ -153,6 +153,7 @@ services:
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
+      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
     networks:
