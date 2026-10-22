@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const logger = require('../logger');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
-// GET /api/assets - Lấy danh sách tài sản (hỗ trợ tìm kiếm, lọc theo status, category)
+// GET /api/assets - Danh sách tài sản (Công khai đọc dữ liệu)
 router.get('/', async (req, res) => {
   try {
     const { q, status, category_id } = req.query;
@@ -73,8 +74,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/assets - Thêm tài sản mới
-router.post('/', async (req, res) => {
+// POST /api/assets - Thêm tài sản mới (BẮT BUỘC ĐĂNG NHẬP VỚI QUYỀN ADMIN HOẶC MANAGER)
+router.post('/', authenticateToken, requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { asset_code, name, category_id, purchase_date, price, status, location, notes } = req.body;
 
@@ -82,10 +83,13 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Vui lòng cung cấp đầy đủ: Mã tài sản, Tên và Danh mục' });
     }
 
-    // Kiểm tra trùng mã
-    const checkDup = await db.query('SELECT id FROM assets WHERE asset_code = $1', [asset_code.trim()]);
+    // Chuẩn hóa mã tài sản thành chữ in hoa TRƯỚC KHI kiểm tra trùng
+    const normalizedCode = asset_code.trim().toUpperCase();
+
+    // Kiểm tra trùng mã tài sản
+    const checkDup = await db.query('SELECT id FROM assets WHERE UPPER(asset_code) = $1', [normalizedCode]);
     if (checkDup.rows.length > 0) {
-      return res.status(400).json({ success: false, message: `Mã tài sản "${asset_code}" đã tồn tại trên hệ thống` });
+      return res.status(400).json({ success: false, message: `Mã tài sản "${normalizedCode}" đã tồn tại trên hệ thống` });
     }
 
     const insertQuery = `
@@ -94,40 +98,54 @@ router.post('/', async (req, res) => {
       RETURNING *;
     `;
     const values = [
-      asset_code.trim().toUpperCase(),
+      normalizedCode,
       name.trim(),
       parseInt(category_id, 10),
       purchase_date || new Date().toISOString().split('T')[0],
       parseFloat(price) || 0,
       status || 'AVAILABLE',
-      location || 'Kho chính',
-      notes || ''
+      location ? location.trim() : 'Kho chính',
+      notes ? notes.trim() : ''
     ];
 
     const result = await db.query(insertQuery, values);
-    logger.info(`Đã thêm mới tài sản thành công: ${asset_code} - ${name}`, { asset_id: result.rows[0].id });
+    logger.info(`Đã thêm mới tài sản [${normalizedCode}] bởi user: ${req.user.username}`);
     res.status(201).json({ success: true, message: 'Thêm tài sản thành công', data: result.rows[0] });
   } catch (error) {
+    // Bắt mã lỗi UNIQUE CONSTRAINT của PostgreSQL (code 23505)
+    if (error.code === '23505') {
+      return res.status(400).json({ success: false, message: 'Mã tài sản đã tồn tại trên cơ sở dữ liệu (Unique constraint violation)' });
+    }
     logger.error('Lỗi khi thêm mới tài sản', { error: error.message, body: req.body });
     res.status(500).json({ success: false, message: 'Lỗi máy chủ khi thêm tài sản: ' + error.message });
   }
 });
 
-// PUT /api/assets/:id - Cập nhật thông tin tài sản
-router.put('/:id', async (req, res) => {
+// PUT /api/assets/:id - Cập nhật thông tin tài sản (BẮT BUỘC ĐĂNG NHẬP)
+router.put('/:id', authenticateToken, requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { id } = req.params;
     const { asset_code, name, category_id, purchase_date, price, status, location, notes } = req.body;
 
-    const checkExist = await db.query('SELECT id FROM assets WHERE id = $1', [id]);
+    const checkExist = await db.query('SELECT id, asset_code FROM assets WHERE id = $1', [id]);
     if (checkExist.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy tài sản để cập nhật' });
+    }
+
+    const normalizedCode = asset_code ? asset_code.trim().toUpperCase() : checkExist.rows[0].asset_code;
+
+    // Nếu đổi mã, kiểm tra trùng mã khác
+    if (asset_code && normalizedCode !== checkExist.rows[0].asset_code) {
+      const dupCheck = await db.query('SELECT id FROM assets WHERE UPPER(asset_code) = $1 AND id <> $2', [normalizedCode, id]);
+      if (dupCheck.rows.length > 0) {
+        return res.status(400).json({ success: false, message: `Mã tài sản "${normalizedCode}" đã thuộc về thiết bị khác` });
+      }
     }
 
     const updateQuery = `
       UPDATE assets
       SET 
-        asset_code = COALESCE($1, asset_code),
+        asset_code = $1,
         name = COALESCE($2, name),
         category_id = COALESCE($3, category_id),
         purchase_date = COALESCE($4, purchase_date),
@@ -141,28 +159,31 @@ router.put('/:id', async (req, res) => {
     `;
 
     const values = [
-      asset_code ? asset_code.trim().toUpperCase() : null,
+      normalizedCode,
       name ? name.trim() : null,
       category_id ? parseInt(category_id, 10) : null,
       purchase_date || null,
       price !== undefined ? parseFloat(price) : null,
       status || null,
-      location || null,
-      notes || null,
+      location ? location.trim() : null,
+      notes ? notes.trim() : null,
       id
     ];
 
     const result = await db.query(updateQuery, values);
-    logger.info(`Cập nhật thành công tài sản ID=${id}`, { updated: result.rows[0] });
+    logger.info(`Cập nhật thành công tài sản ID=${id} [${normalizedCode}] bởi user: ${req.user.username}`);
     res.json({ success: true, message: 'Cập nhật tài sản thành công', data: result.rows[0] });
   } catch (error) {
+    if (error.code === '23505') {
+      return res.status(400).json({ success: false, message: 'Mã tài sản đã tồn tại trên cơ sở dữ liệu' });
+    }
     logger.error(`Lỗi cập nhật tài sản ID=${req.params.id}`, { error: error.message });
     res.status(500).json({ success: false, message: 'Lỗi máy chủ khi cập nhật tài sản' });
   }
 });
 
-// DELETE /api/assets/:id - Xóa tài sản
-router.delete('/:id', async (req, res) => {
+// DELETE /api/assets/:id - Xóa tài sản (BẮT BUỘC QUYỀN ADMIN)
+router.delete('/:id', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query('DELETE FROM assets WHERE id = $1 RETURNING asset_code, name', [id]);
@@ -171,7 +192,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy tài sản cần xóa' });
     }
 
-    logger.warn(`Đã xóa tài sản ID=${id} (${result.rows[0].asset_code})`);
+    logger.warn(`Tài sản ID=${id} [${result.rows[0].asset_code}] ĐÃ BỊ XÓA bởi user: ${req.user.username}`);
     res.json({ success: true, message: `Đã xóa tài sản ${result.rows[0].asset_code} thành công` });
   } catch (error) {
     logger.error(`Lỗi khi xóa tài sản ID=${req.params.id}`, { error: error.message });

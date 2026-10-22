@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const logger = require('../logger');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
 // GET /api/maintenance - Danh sách lịch sử bảo trì
 router.get('/', async (req, res) => {
@@ -31,8 +32,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/maintenance - Thêm mới bản ghi bảo dưỡng & cập nhật trạng thái thiết bị
-router.post('/', async (req, res) => {
+// POST /api/maintenance - Ghi nhận bảo trì mới (BẮT BUỘC ĐĂNG NHẬP)
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { asset_id, maintenance_date, performed_by, description, cost, status_after } = req.body;
 
@@ -77,7 +78,7 @@ router.post('/', async (req, res) => {
       }
 
       await client.query('COMMIT');
-      logger.info(`Ghi nhận bảo trì cho thiết bị ${checkAsset.rows[0].asset_code}`, { 
+      logger.info(`User ${req.user.username} đã ghi nhận bảo trì cho thiết bị ${checkAsset.rows[0].asset_code}`, { 
         record_id: maintRes.rows[0].id, 
         cost 
       });
@@ -99,8 +100,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// DELETE /api/maintenance/:id - Xóa bản ghi bảo trì
-router.delete('/:id', async (req, res) => {
+// DELETE /api/maintenance/:id - Xóa bản ghi bảo trì (BẮT BUỘC QUYỀN ADMIN)
+router.delete('/:id', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query('DELETE FROM maintenance_history WHERE id = $1 RETURNING id', [id]);
@@ -108,7 +109,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi bảo trì' });
     }
 
-    logger.info(`Đã xóa bản ghi bảo trì ID=${id}`);
+    logger.info(`User ${req.user.username} đã xóa bản ghi bảo trì ID=${id}`);
     res.json({ success: true, message: 'Xóa bản ghi bảo trì thành công' });
   } catch (error) {
     logger.error(`Lỗi xóa bản ghi bảo trì ID=${req.params.id}`, { error: error.message });

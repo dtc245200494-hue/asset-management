@@ -3,13 +3,14 @@
 -- Hệ thống Quản lý Tài sản / Thiết bị - Đề 16
 -- ====================================================================
 
--- 1. Tài khoản mẫu (Mật khẩu mặc định: admin123)
--- bcrypt hash của 'admin123': $2b$10$wL4G31Q87xM2k1nN.iEbe.eFm8pPZ54wN2qH8vT8D9/jD4O2.tW6m
+-- 1. Tài khoản mẫu được băm Bcrypt chuẩn (Mật khẩu: hien140106)
+-- Bcrypt Hash: $2a$10$YRyiiGZgixrwtv6FVkPWVeBgYikCFAQePuXbdq5IEzZMRH2b88g/O
 INSERT INTO users (username, password_hash, full_name, role, email) VALUES
-('admin', '$2b$10$wL4G31Q87xM2k1nN.iEbe.eFm8pPZ54wN2qH8vT8D9/jD4O2.tW6m', 'Quản trị viên Hệ thống', 'ADMIN', 'admin@asset.ictu.vn'),
-('hienht', '$2b$10$wL4G31Q87xM2k1nN.iEbe.eFm8pPZ54wN2qH8vT8D9/jD4O2.tW6m', 'Hoàng Trang Hiền', 'MANAGER', 'ictu245200494@ictu.edu.vn'),
-('nhanvien1', '$2b$10$wL4G31Q87xM2k1nN.iEbe.eFm8pPZ54wN2qH8vT8D9/jD4O2.tW6m', 'Nguyễn Văn An', 'STAFF', 'an.nv@asset.ictu.vn')
-ON CONFLICT (username) DO NOTHING;
+('hien141', '$2a$10$YRyiiGZgixrwtv6FVkPWVeBgYikCFAQePuXbdq5IEzZMRH2b88g/O', 'Hoàng Trang Hiền', 'ADMIN', 'ictu245200494@ictu.edu.vn'),
+('admin', '$2a$10$YRyiiGZgixrwtv6FVkPWVeBgYikCFAQePuXbdq5IEzZMRH2b88g/O', 'Quản trị viên Hệ thống', 'ADMIN', 'admin@asset.ictu.vn'),
+('nhanvien1', '$2a$10$YRyiiGZgixrwtv6FVkPWVeBgYikCFAQePuXbdq5IEzZMRH2b88g/O', 'Nguyễn Văn An', 'STAFF', 'an.nv@asset.ictu.vn')
+ON CONFLICT (username) DO UPDATE 
+SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, full_name = EXCLUDED.full_name;
 
 -- 2. Danh mục thiết bị
 INSERT INTO categories (id, name, description) VALUES

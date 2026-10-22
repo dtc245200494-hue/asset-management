@@ -4,49 +4,53 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 const logger = require('../logger');
+const { authenticateToken } = require('../middleware/auth');
 
-const JWT_SECRET = process.env.SESSION_SECRET || 'secret-jwt-dtc245200494';
+const JWT_SECRET = process.env.SESSION_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    logger.error('CRITICAL: SESSION_SECRET is not configured in production environment!');
+  }
+}
 
-// POST /api/auth/login
+// POST /api/auth/login - Đăng nhập chuẩn mã hóa bcrypt 100%
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
-      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên đăng nhập và mật khẩu' });
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp đầy đủ tên đăng nhập và mật khẩu' });
     }
 
-    const userRes = await db.query('SELECT * FROM users WHERE username = $1', [username.trim()]);
+    const cleanUsername = username.trim().toLowerCase();
+    const userRes = await db.query('SELECT * FROM users WHERE LOWER(username) = $1', [cleanUsername]);
+    
     if (userRes.rows.length === 0) {
-      logger.warn(`Đăng nhập thất bại: Tài khoản không tồn tại [${username}]`);
+      logger.warn(`Đăng nhập thất bại: Tài khoản không tồn tại [${cleanUsername}]`);
       return res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc mật khẩu' });
     }
 
     const user = userRes.rows[0];
-    
-    // Kiểm tra mật khẩu (hỗ trợ cả hash bcrypt lẫn plain text)
-    let isMatch = false;
-    try {
-      isMatch = await bcrypt.compare(password, user.password_hash);
-    } catch (e) {
-      isMatch = false;
-    }
 
-    if (!isMatch && (password === user.password_hash || password === 'hien140106' || password === 'admin123')) {
-      isMatch = true;
-    }
-
+    // Kiểm tra mật khẩu bằng thuật toán băm an toàn Bcrypt (Không cho phép fallback mật khẩu cố định)
+    const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      logger.warn(`Đăng nhập thất bại: Sai mật khẩu [${username}]`);
+      logger.warn(`Đăng nhập thất bại: Sai mật khẩu tài khoản [${user.username}]`);
       return res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc mật khẩu' });
     }
 
+    const secretKey = process.env.SESSION_SECRET || 'dev-jwt-secret-key-32chars-min-len';
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, full_name: user.full_name },
-      JWT_SECRET,
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        full_name: user.full_name
+      },
+      secretKey,
       { expiresIn: '8h' }
     );
 
-    logger.info(`Người dùng đăng nhập thành công: ${user.username} (${user.role})`);
+    logger.info(`Đăng nhập thành công: User ${user.username} [Vai trò: ${user.role}]`);
 
     res.json({
       success: true,
@@ -61,25 +65,17 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Lỗi khi đăng nhập', { error: error.message });
-    res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
+    logger.error('Lỗi ngoại lệ trong quá trình đăng nhập', { error: error.message });
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ nội bộ trong quá trình xác thực' });
   }
 });
 
-// GET /api/auth/me
-router.get('/me', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: 'Chưa đăng nhập' });
-  }
-
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    res.json({ success: true, user: decoded });
-  } catch (err) {
-    res.status(401).json({ success: false, message: 'Phiên làm việc hết hạn' });
-  }
+// GET /api/auth/me - Lấy thông tin phiên làm việc hiện tại
+router.get('/me', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    user: req.user
+  });
 });
 
 module.exports = router;

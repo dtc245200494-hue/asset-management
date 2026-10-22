@@ -87,7 +87,7 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@ictu.edu.vn}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-AdminSecure2026!Passwd}
     ports:
-      - "${PGADMIN_PORT:-5050}:80"
+      - "${BIND_IP:-127.0.0.1}:${PGADMIN_PORT:-5050}:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
@@ -109,7 +109,7 @@ services:
       - "--storage.tsdb.retention.time=7d"
       - "--web.enable-lifecycle"
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "${BIND_IP:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
@@ -121,10 +121,10 @@ services:
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-GrafanaSecure2026!}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-hien140106}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "${GRAFANA_PORT:-3001}:3000"
+      - "${BIND_IP:-127.0.0.1}:${GRAFANA_PORT:-3001}:3000"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
@@ -139,11 +139,14 @@ services:
     container_name: asset-cadvisor
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     restart: unless-stopped
-    privileged: true
+    # Hardening: Loại bỏ privileged: true để tránh container breakout
+    privileged: false
+    security_opt:
+      - no-new-privileges:true
     expose:
       - "8080"
     ports:
-      - "127.0.0.1:${CADVISOR_PORT:-8088}:8080"
+      - "${BIND_IP:-127.0.0.1}:${CADVISOR_PORT:-8088}:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro

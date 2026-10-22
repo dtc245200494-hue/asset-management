@@ -1,9 +1,95 @@
 // ====================================================================
 // APP.JS - Hệ thống Quản lý Tài sản / Thiết bị - Đề 16
-// Xử lý API, tương tác giao diện và cập nhật trạng thái
+// Xử lý API, tương tác giao diện, bảo mật JWT và cập nhật trạng thái
 // ====================================================================
 
 const API = {
+  // Quản lý Token & Session
+  getToken() {
+    return localStorage.getItem('asset_token');
+  },
+
+  getUser() {
+    try {
+      return JSON.parse(localStorage.getItem('asset_user'));
+    } catch (e) {
+      return null;
+    }
+  },
+
+  setSession(token, user) {
+    localStorage.setItem('asset_token', token);
+    localStorage.setItem('asset_user', JSON.stringify(user));
+  },
+
+  clearSession() {
+    localStorage.removeItem('asset_token');
+    localStorage.removeItem('asset_user');
+  },
+
+  logout() {
+    API.clearSession();
+    window.location.href = '/login.html';
+  },
+
+  // Header kèm JWT Token bắt buộc cho các thao tác ghi dữ liệu (POST, PUT, DELETE)
+  getHeaders(customHeaders = {}) {
+    const headers = { 'Content-Type': 'application/json', ...customHeaders };
+    const token = API.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  },
+
+  // Wrapper fetch tự động xử lý 401 Unauthorized
+  async authFetch(url, options = {}) {
+    options.headers = API.getHeaders(options.headers || {});
+    const res = await fetch(url, options);
+
+    if (res.status === 401) {
+      API.showToast('Phiên làm việc hết hạn hoặc yêu cầu đăng nhập. Đang chuyển hướng...', 'danger');
+      API.clearSession();
+      setTimeout(() => {
+        window.location.href = '/login.html';
+      }, 1500);
+      throw new Error('Yêu cầu xác thực tài khoản (401 Unauthorized)');
+    }
+
+    if (res.status === 403) {
+      API.showToast('Bạn không có đủ quyền hạn để thực hiện thao tác này (403 Forbidden)', 'danger');
+      throw new Error('Từ chối quyền hạn (403 Forbidden)');
+    }
+
+    return res;
+  },
+
+  // Cập nhật UI người dùng đăng nhập trên Navbar
+  updateAuthUI() {
+    const user = API.getUser();
+    const authContainer = document.getElementById('navbarUserArea');
+    if (!authContainer) return;
+
+    if (user && user.username) {
+      authContainer.innerHTML = `
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-primary px-3 py-2">
+            <i class="bi bi-person-check-fill me-1"></i>${user.username} (${user.role})
+          </span>
+          <button class="btn btn-outline-danger btn-sm" onclick="API.logout()" title="Đăng xuất">
+            <i class="bi bi-box-arrow-right"></i>
+          </button>
+        </div>
+      `;
+    } else {
+      authContainer.innerHTML = `
+        <a href="/login.html" class="btn btn-primary btn-sm">
+          <i class="bi bi-person-circle me-1"></i>Đăng nhập
+        </a>
+      `;
+    }
+  },
+
   // Format tiền tệ VNĐ
   formatCurrency(value) {
     if (!value) return '0 đ';
@@ -75,7 +161,7 @@ const API = {
       const data = await res.json();
       API.showToast(`Đã ghi log ERROR: "${data.message}". Hãy kiểm tra Grafana Loki Explore!`, 'danger');
     } catch (err) {
-      API.showToast('Request thất bại (đúng dự kiến gây lỗi)! Log ERROR đã được ghi nhận.', 'danger');
+      API.showToast('Request gây lỗi thành công! Log ERROR đã được ghi nhận trên Loki.', 'danger');
     }
   }
 };
@@ -84,6 +170,7 @@ const API = {
 // 1. TRANG DASHBOARD
 // ==========================================
 async function loadDashboard() {
+  API.updateAuthUI();
   try {
     const res = await fetch('/api/dashboard/stats');
     const json = await res.json();
@@ -171,6 +258,7 @@ async function loadCategoriesSelect(selectId, defaultOption = 'Chọn danh mục
 }
 
 async function loadAssetsList() {
+  API.updateAuthUI();
   const tbody = document.getElementById('assetsTableBody');
   if (!tbody) return;
 
@@ -212,8 +300,8 @@ async function loadAssetsList() {
         <td><i class="bi bi-geo-alt me-1 text-danger"></i>${a.location}</td>
         <td class="text-end">
           <button class="btn btn-sm btn-outline-info me-1" onclick="viewAssetDetail(${a.id})" title="Chi tiết"><i class="bi bi-eye"></i></button>
-          <button class="btn btn-sm btn-outline-primary me-1" onclick="editAssetModal(${a.id})" title="Chỉnh sửa"><i class="bi bi-pencil"></i></button>
-          <button class="btn btn-sm btn-outline-danger" onclick="deleteAsset(${a.id}, '${a.asset_code}')" title="Xóa"><i class="bi bi-trash"></i></button>
+          <button class="btn btn-sm btn-outline-primary me-1" onclick="editAssetModal(${a.id})" title="Chỉnh sửa (Cần đăng nhập)"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteAsset(${a.id}, '${a.asset_code}')" title="Xóa (Cần quyền Admin)"><i class="bi bi-trash"></i></button>
         </td>
       </tr>
     `).join('');
@@ -222,7 +310,7 @@ async function loadAssetsList() {
   }
 }
 
-// Thêm mới hoặc cập nhật tài sản
+// Thêm mới hoặc cập nhật tài sản (Bảo vệ bằng JWT)
 async function saveAsset(e) {
   e.preventDefault();
   const id = document.getElementById('assetId')?.value;
@@ -241,9 +329,8 @@ async function saveAsset(e) {
     const url = id ? `/api/assets/${id}` : '/api/assets';
     const method = id ? 'PUT' : 'POST';
 
-    const res = await fetch(url, {
+    const res = await API.authFetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
@@ -261,6 +348,11 @@ async function saveAsset(e) {
 
 // Mở modal thêm tài sản
 function openCreateAssetModal() {
+  if (!API.getToken()) {
+    API.showToast('Vui lòng đăng nhập để thêm mới tài sản!', 'warning');
+    setTimeout(() => { window.location.href = '/login.html'; }, 1000);
+    return;
+  }
   document.getElementById('assetForm').reset();
   document.getElementById('assetId').value = '';
   document.getElementById('assetModalTitle').innerText = 'Thêm mới Thiết bị / Tài sản';
@@ -272,6 +364,11 @@ function openCreateAssetModal() {
 
 // Chỉnh sửa tài sản
 async function editAssetModal(id) {
+  if (!API.getToken()) {
+    API.showToast('Vui lòng đăng nhập để chỉnh sửa tài sản!', 'warning');
+    setTimeout(() => { window.location.href = '/login.html'; }, 1000);
+    return;
+  }
   try {
     const res = await fetch(`/api/assets/${id}`);
     const json = await res.json();
@@ -349,14 +446,20 @@ async function viewAssetDetail(id) {
   }
 }
 
-// Xóa tài sản
+// Xóa tài sản (Bảo vệ bằng JWT Token - Yêu cầu quyền Admin)
 async function deleteAsset(id, code) {
+  if (!API.getToken()) {
+    API.showToast('Vui lòng đăng nhập với quyền Quản trị viên để xóa tài sản!', 'warning');
+    setTimeout(() => { window.location.href = '/login.html'; }, 1000);
+    return;
+  }
+
   if (!confirm(`Bạn có chắc chắn muốn xóa tài sản [${code}] không? Hành động này sẽ xóa cả lịch sử bảo trì liên quan!`)) {
     return;
   }
 
   try {
-    const res = await fetch(`/api/assets/${id}`, { method: 'DELETE' });
+    const res = await API.authFetch(`/api/assets/${id}`, { method: 'DELETE' });
     const json = await res.json();
     if (!json.success) throw new Error(json.message);
 
@@ -371,6 +474,7 @@ async function deleteAsset(id, code) {
 // 3. TRANG LỊCH SỬ BẢO TRÌ
 // ==========================================
 async function loadMaintenanceList() {
+  API.updateAuthUI();
   const tbody = document.getElementById('maintenanceTableBody');
   if (!tbody) return;
 
@@ -381,7 +485,7 @@ async function loadMaintenanceList() {
 
     const records = json.data;
     if (records.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-muted">Chưa có bản ghi bảo trì nào</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-5 text-muted">Chưa có bản ghi bảo trì nào</td></tr>';
       return;
     }
 
@@ -395,15 +499,22 @@ async function loadMaintenanceList() {
         <td>${m.description}</td>
         <td class="fw-semibold text-danger">${API.formatCurrency(m.cost)}</td>
         <td>${API.renderStatusBadge(m.status_after)}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteMaintenance(${m.id})" title="Xóa (Cần quyền Admin)"><i class="bi bi-trash"></i></button>
+        </td>
       </tr>
     `).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-danger py-4 text-center">Lỗi: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-danger py-4 text-center">Lỗi: ${err.message}</td></tr>`;
   }
 }
 
 async function openCreateMaintenanceModal() {
-  // Load danh sách assets vào select
+  if (!API.getToken()) {
+    API.showToast('Vui lòng đăng nhập để ghi nhận bảo trì!', 'warning');
+    setTimeout(() => { window.location.href = '/login.html'; }, 1000);
+    return;
+  }
   const sel = document.getElementById('maintAssetId');
   if (sel) {
     const res = await fetch('/api/assets');
@@ -429,9 +540,8 @@ async function saveMaintenance(e) {
   };
 
   try {
-    const res = await fetch('/api/maintenance', {
+    const res = await API.authFetch('/api/maintenance', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     const json = await res.json();
@@ -439,6 +549,27 @@ async function saveMaintenance(e) {
 
     API.showToast('Ghi nhận thông tin bảo trì thành công!');
     bootstrap.Modal.getInstance(document.getElementById('maintenanceModal')).hide();
+    loadMaintenanceList();
+  } catch (err) {
+    API.showToast(err.message, 'danger');
+  }
+}
+
+async function deleteMaintenance(id) {
+  if (!API.getToken()) {
+    API.showToast('Vui lòng đăng nhập với quyền Quản trị viên để xóa bản ghi bảo trì!', 'warning');
+    setTimeout(() => { window.location.href = '/login.html'; }, 1000);
+    return;
+  }
+
+  if (!confirm('Bạn có chắc chắn muốn xóa bản ghi bảo trì này không?')) return;
+
+  try {
+    const res = await API.authFetch(`/api/maintenance/${id}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    API.showToast('Đã xóa bản ghi bảo trì thành công!');
     loadMaintenanceList();
   } catch (err) {
     API.showToast(err.message, 'danger');

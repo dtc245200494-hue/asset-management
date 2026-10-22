@@ -56,8 +56,11 @@ async function initializeDatabase() {
     }
 
     client.release();
+    logger.info('Khởi tạo cơ sở dữ liệu thành công!');
   } catch (err) {
-    logger.error('Lỗi khi khởi tạo cơ sở dữ liệu', { error: err.message });
+    logger.error('CRITICAL: Lỗi khi khởi tạo cơ sở dữ liệu - Dừng ứng dụng!', { error: err.message, stack: err.stack });
+    // Dừng tiến trình để Docker restart hoặc fail fast
+    process.exit(1);
   }
 }
 

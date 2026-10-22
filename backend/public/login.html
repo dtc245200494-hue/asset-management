@@ -78,6 +78,7 @@
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.message);
+        API.setSession(json.token, json.user);
         API.showToast('Đăng nhập thành công! Đang chuyển hướng...');
         setTimeout(() => window.location.href = '/index.html', 1000);
       } catch (err) {

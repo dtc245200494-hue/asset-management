@@ -52,9 +52,12 @@
   <div class="main-wrapper">
     <header class="top-navbar">
       <h5 class="mb-0 fw-bold">Danh mục Loại Thiết bị</h5>
-      <button class="btn btn-primary btn-sm" onclick="new bootstrap.Modal(document.getElementById('categoryModal')).show()">
-        <i class="bi bi-plus-circle me-1"></i>Thêm Danh mục
-      </button>
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-primary btn-sm" onclick="new bootstrap.Modal(document.getElementById('categoryModal')).show()">
+          <i class="bi bi-plus-circle me-1"></i>Thêm Danh mục
+        </button>
+        <div id="navbarUserArea"></div>
+      </div>
     </header>
 
     <main class="content-container">

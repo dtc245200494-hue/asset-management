@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const logger = require('../logger');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
-// GET /api/categories - Lấy danh sách danh mục và số lượng tài sản tương ứng
+// GET /api/categories - Lấy danh sách danh mục
 router.get('/', async (req, res) => {
   try {
     const query = `
@@ -21,8 +22,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/categories - Tạo mới danh mục
-router.post('/', async (req, res) => {
+// POST /api/categories - Tạo mới danh mục (Yêu cầu đăng nhập)
+router.post('/', authenticateToken, requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { name, description } = req.body;
     if (!name) {
@@ -36,10 +37,10 @@ router.post('/', async (req, res) => {
 
     const result = await db.query(
       'INSERT INTO categories (name, description) VALUES ($1, $2) RETURNING *',
-      [name.trim(), description || '']
+      [name.trim(), description ? description.trim() : '']
     );
 
-    logger.info(`Đã tạo danh mục mới: ${name}`, { category_id: result.rows[0].id });
+    logger.info(`User ${req.user.username} đã tạo danh mục mới: ${name}`, { category_id: result.rows[0].id });
     res.status(201).json({ success: true, message: 'Thêm danh mục thành công', data: result.rows[0] });
   } catch (error) {
     logger.error('Lỗi tạo danh mục', { error: error.message });
@@ -47,8 +48,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// DELETE /api/categories/:id - Xóa danh mục (chỉ khi không có tài sản)
-router.delete('/:id', async (req, res) => {
+// DELETE /api/categories/:id - Xóa danh mục (Yêu cầu quyền ADMIN)
+router.delete('/:id', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
     const countCheck = await db.query('SELECT COUNT(*) FROM assets WHERE category_id = $1', [id]);
@@ -64,7 +65,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy danh mục' });
     }
 
-    logger.info(`Đã xóa danh mục ID=${id}`);
+    logger.info(`User ${req.user.username} đã xóa danh mục ID=${id}`);
     res.json({ success: true, message: 'Xóa danh mục thành công' });
   } catch (error) {
     logger.error(`Lỗi xóa danh mục ID=${req.params.id}`, { error: error.message });
