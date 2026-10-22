@@ -6,7 +6,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  - url: http://asset-loki:3100/loki/api/v1/push
 
 scrape_configs:
   # 1. Thu thập trực tiếp file log từ ứng dụng backend (hoạt động hoàn hảo trên cả Windows & Linux)

@@ -12,7 +12,7 @@ scrape_configs:
   - job_name: "node-app"
     metrics_path: "/metrics"
     static_configs:
-      - targets: ["app:3000"]
+      - targets: ["asset-app:3000"]
         labels:
           service: "asset-app"
           tier: "backend"
@@ -20,7 +20,7 @@ scrape_configs:
   # 2. cAdvisor (Giám sát tài nguyên container: CPU, RAM, Network)
   - job_name: "cadvisor"
     static_configs:
-      - targets: ["cadvisor:8080"]
+      - targets: ["asset-cadvisor:8080"]
         labels:
           service: "cadvisor"
           tier: "monitoring"
@@ -28,7 +28,7 @@ scrape_configs:
   # 3. PostgreSQL Exporter (Giám sát cơ sở dữ liệu)
   - job_name: "postgres"
     static_configs:
-      - targets: ["postgres-exporter:9187"]
+      - targets: ["asset-postgres-exporter:9187"]
         labels:
           service: "postgres"
           tier: "database"
@@ -36,7 +36,7 @@ scrape_configs:
   # 4. Nginx Exporter (Giám sát Reverse Proxy Nginx)
   - job_name: "nginx"
     static_configs:
-      - targets: ["nginx-exporter:9113"]
+      - targets: ["asset-nginx-exporter:9113"]
         labels:
           service: "nginx"
           tier: "proxy"
