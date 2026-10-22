@@ -32,8 +32,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/maintenance - Ghi nhận bảo trì mới (BẮT BUỘC ĐĂNG NHẬP)
-router.post('/', authenticateToken, async (req, res) => {
+// POST /api/maintenance - Ghi nhận bảo trì mới (BẮT BUỘC QUYỀN ADMIN HOẶC MANAGER)
+router.post('/', authenticateToken, requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { asset_id, maintenance_date, performed_by, description, cost, status_after } = req.body;
 

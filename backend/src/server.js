@@ -16,6 +16,9 @@ const authRoutes = require('./routes/auth');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Tin tưởng proxy Nginx để lấy đúng IP client cho Rate Limiting & Logs
+app.set('trust proxy', 1);
+
 // ==========================================
 // 1. PROMETHEUS METRICS SETUP
 // ==========================================

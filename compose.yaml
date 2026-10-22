@@ -15,8 +15,10 @@ services:
     restart: unless-stopped
     ports:
       - "${NGINX_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - asset-app
     networks:
@@ -37,11 +39,11 @@ services:
       PORT: 3000
       POSTGRES_DB: ${POSTGRES_DB:-assetdb}
       POSTGRES_USER: ${POSTGRES_USER:-assetuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AssetSecure2026!Passwd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       DB_HOST: asset-postgres
       DB_PORT: 5432
-      DATABASE_URL: postgresql://${POSTGRES_USER:-assetuser}:${POSTGRES_PASSWORD:-AssetSecure2026!Passwd}@asset-postgres:5432/${POSTGRES_DB:-assetdb}
-      SESSION_SECRET: ${SESSION_SECRET:-super-secret-key-dtc245200494}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-assetuser}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@asset-postgres:5432/${POSTGRES_DB:-assetdb}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
     expose:
       - "3000"
     volumes:
@@ -64,7 +66,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-assetdb}
       POSTGRES_USER: ${POSTGRES_USER:-assetuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AssetSecure2026!Passwd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -85,7 +87,7 @@ services:
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@ictu.edu.vn}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-hien140106}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?PGADMIN_DEFAULT_PASSWORD is required}
     ports:
       - "${BIND_IP:-127.0.0.1}:${PGADMIN_PORT:-5050}:80"
     volumes:
@@ -121,7 +123,7 @@ services:
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-hien140106}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
       - "${BIND_IP:-127.0.0.1}:${GRAFANA_PORT:-3001}:3000"
@@ -230,9 +232,10 @@ networks:
   # Mạng Public giữa Nginx và App
   frontend-net:
     driver: bridge
-  # Mạng Nội bộ an toàn giữa App và Database
+  # Mạng Nội bộ an toàn giữa App và Database (Cô lập tuyệt đối - Hardening)
   backend-net:
     driver: bridge
+    internal: true
   # Mạng Giám sát Metrics và Logs
   monitoring-net:
     driver: bridge

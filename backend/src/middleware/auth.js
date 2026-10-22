@@ -1,10 +1,6 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../logger');
-
-const JWT_SECRET = process.env.SESSION_SECRET;
-if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
-  logger.error('CRITICAL SECURITY ERROR: SESSION_SECRET (JWT_SECRET) is missing in environment variables!');
-}
+const { JWT_SECRET } = require('../config/jwt');
 
 /**
  * Middleware xác thực JWT Token bắt buộc
@@ -21,8 +17,8 @@ function authenticateToken(req, res, next) {
     });
   }
 
-  const secret = process.env.SESSION_SECRET || 'fallback-secret-for-dev-only';
-  jwt.verify(token, secret, (err, user) => {
+  // Xác thực token bằng JWT_SECRET tập trung (Không dùng fallback)
+  jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
       logger.warn(`Truy cập bị từ chối (401): Token không hợp lệ hoặc đã hết hạn [${req.method} ${req.originalUrl}]`);
       return res.status(401).json({

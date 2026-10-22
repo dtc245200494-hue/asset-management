@@ -2,19 +2,30 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const logger = require('../logger');
 const { authenticateToken } = require('../middleware/auth');
+const { JWT_SECRET } = require('../config/jwt');
 
-const JWT_SECRET = process.env.SESSION_SECRET;
-if (!JWT_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    logger.error('CRITICAL: SESSION_SECRET is not configured in production environment!');
+// Chống brute force: Giới hạn tối đa 10 lần thử đăng nhập trong 15 phút cho mỗi IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Tài khoản hoặc IP đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau 15 phút.'
+  },
+  handler: (req, res, next, options) => {
+    logger.warn(`Phát hiện tần suất thử mật khẩu bất thường (Rate Limit Exceeded) từ IP: ${req.ip}`);
+    res.status(429).json(options.message);
   }
-}
+});
 
-// POST /api/auth/login - Đăng nhập chuẩn mã hóa bcrypt 100%
-router.post('/login', async (req, res) => {
+// POST /api/auth/login - Đăng nhập chuẩn mã hóa bcrypt 100% kèm Rate Limiting
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -38,7 +49,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc mật khẩu' });
     }
 
-    const secretKey = process.env.SESSION_SECRET || 'dev-jwt-secret-key-32chars-min-len';
+    // Tạo token sử dụng JWT_SECRET tập trung bắt buộc
     const token = jwt.sign(
       {
         id: user.id,
@@ -46,7 +57,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         full_name: user.full_name
       },
-      secretKey,
+      JWT_SECRET,
       { expiresIn: '8h' }
     );
 
