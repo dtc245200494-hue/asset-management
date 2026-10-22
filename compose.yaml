@@ -1,0 +1,235 @@
+# ====================================================================
+# ĐỀ 16: HỆ THỐNG QUẢN LÝ TÀI SẢN / THIẾT BỊ
+# Môn học: Triển khai và Quản trị Hệ thống Phần mềm
+# Sinh viên: Hoàng Trang Hiền - MSV: DTC245200494
+# Kiến trúc: 11 Containers (App + DB + Proxy + Monitoring + Logging)
+# ====================================================================
+
+services:
+  # ------------------------------------------------------------------
+  # 1. TẦNG PROXY & GIAO DIỆN CÔNG KHAI
+  # ------------------------------------------------------------------
+  asset-nginx:
+    container_name: asset-nginx
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - asset-app
+    networks:
+      - frontend-net
+      - monitoring-net
+
+  # ------------------------------------------------------------------
+  # 2. TẦNG ỨNG DỤNG (BACKEND & FRONTEND)
+  # ------------------------------------------------------------------
+  asset-app:
+    container_name: asset-app
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      POSTGRES_DB: ${POSTGRES_DB:-assetdb}
+      POSTGRES_USER: ${POSTGRES_USER:-assetuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AssetSecure2026!Passwd}
+      DB_HOST: asset-postgres
+      DB_PORT: 5432
+      DATABASE_URL: postgresql://${POSTGRES_USER:-assetuser}:${POSTGRES_PASSWORD:-AssetSecure2026!Passwd}@asset-postgres:5432/${POSTGRES_DB:-assetdb}
+      SESSION_SECRET: ${SESSION_SECRET:-super-secret-key-dtc245200494}
+    expose:
+      - "3000"
+    volumes:
+      - app_logs:/app/logs
+    depends_on:
+      asset-postgres:
+        condition: service_healthy
+    networks:
+      - frontend-net
+      - backend-net
+      - monitoring-net
+
+  # ------------------------------------------------------------------
+  # 3. TẦNG CƠ SỞ DỮ LIỆU & QUẢN TRỊ DB
+  # ------------------------------------------------------------------
+  asset-postgres:
+    container_name: asset-postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-assetdb}
+      POSTGRES_USER: ${POSTGRES_USER:-assetuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AssetSecure2026!Passwd}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    expose:
+      - "5432" # Hardening: Không publish cổng 5432 ra host bên ngoài
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-assetuser} -d ${POSTGRES_DB:-assetdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-net
+
+  asset-pgadmin:
+    container_name: asset-pgadmin
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@ictu.edu.vn}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-AdminSecure2026!Passwd}
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      asset-postgres:
+        condition: service_healthy
+    networks:
+      - backend-net
+
+  # ------------------------------------------------------------------
+  # 4. TẦNG GIÁM SÁT METRICS (PROMETHEUS + GRAFANA + EXPORTERS)
+  # ------------------------------------------------------------------
+  asset-prometheus:
+    container_name: asset-prometheus
+    image: prom/prometheus:v2.51.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - monitoring-net
+
+  asset-grafana:
+    container_name: asset-grafana
+    image: grafana/grafana:10.4.0
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-GrafanaSecure2026!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - asset-prometheus
+      - asset-loki
+    networks:
+      - monitoring-net
+
+  asset-cadvisor:
+    container_name: asset-cadvisor
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    expose:
+      - "8080"
+    ports:
+      - "127.0.0.1:${CADVISOR_PORT:-8080}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring-net
+
+  asset-postgres-exporter:
+    container_name: asset-postgres-exporter
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-assetuser}:${POSTGRES_PASSWORD:-AssetSecure2026!Passwd}@asset-postgres:5432/${POSTGRES_DB:-assetdb}?sslmode=disable"
+    expose:
+      - "9187"
+    depends_on:
+      asset-postgres:
+        condition: service_healthy
+    networks:
+      - backend-net
+      - monitoring-net
+
+  asset-nginx-exporter:
+    container_name: asset-nginx-exporter
+    image: nginx/nginx-prometheus-exporter:1.1.0
+    restart: unless-stopped
+    command:
+      - -nginx.scrape-uri=http://asset-nginx:80/stub_status
+    expose:
+      - "9113"
+    depends_on:
+      - asset-nginx
+    networks:
+      - frontend-net
+      - monitoring-net
+
+  # ------------------------------------------------------------------
+  # 5. TẦNG THU THẬP & TRUY VẤN LOG (LOKI + PROMTAIL)
+  # ------------------------------------------------------------------
+  asset-loki:
+    container_name: asset-loki
+    image: grafana/loki:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    expose:
+      - "3100"
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    networks:
+      - monitoring-net
+
+  asset-promtail:
+    container_name: asset-promtail
+    image: grafana/promtail:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - app_logs:/var/log/app:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - asset-loki
+    networks:
+      - monitoring-net
+
+# --------------------------------------------------------------------
+# KHAI BÁO VOLUMES & MẠNG (NETWORK ISOLATION)
+# --------------------------------------------------------------------
+volumes:
+  postgres_data:
+  pgadmin_data:
+  grafana_data:
+  loki_data:
+  app_logs:
+
+networks:
+  # Mạng Public giữa Nginx và App
+  frontend-net:
+    driver: bridge
+  # Mạng Nội bộ an toàn giữa App và Database
+  backend-net:
+    driver: bridge
+  # Mạng Giám sát Metrics và Logs
+  monitoring-net:
+    driver: bridge
